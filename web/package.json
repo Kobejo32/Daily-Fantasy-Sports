@@ -1,0 +1,18 @@
+{
+  "name": "dfs-web-source-reference",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sanitized DFS web source and isolated regression tests; not a deployable application.",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "javascript-lp-solver": "1.0.3"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.6.3",
+    "@vitejs/plugin-react": "4.3.4",
+    "jsdom": "25.0.1",
+    "vitest": "2.1.8"
+  }
+}

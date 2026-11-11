@@ -1,0 +1,14 @@
+coef_vegas: 12.111376599881858
+coef_rg: 0.23649037576797713
+intercept: -0.8985980854979103
+residual_std: 28.103438489277597
+bootstrap_ci:
+  low: 25.68029411943526
+  high: 30.22719298630559
+  relative_se: 0.08089577488187297
+fit_meta:
+  n_observations: 264
+  n_slates: 14
+  fit_at: '2026-05-03T11:52:41'
+  raw_residual_std: 28.103438489277597
+  fallback_used: false

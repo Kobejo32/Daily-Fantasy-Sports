@@ -1,0 +1,109 @@
+# GPP Portfolio v2 — knob source of truth.
+# Design: holmes/projects/mlb/plans/2026-05-04-gpp-portfolio-v2-design.md
+# Schema version: 1
+
+version: 1
+
+# --- slate framing ---
+top_n_offenses: 4              # 2.2  — candidate offense pool size. Reset 8→4 (2026-05-24, project owner) to focus
+                               # the portfolio on the 4 highest-game-total Vegas environments rather than
+                               # diffuse across 8 teams. Ranking criterion is now `vegas_game_total`
+                               # (frame.py), not the gap signal — see frame.py module docstring.
+slate_taxonomy_enabled: false  # 2.3  — slate-type-conditional shape allocation off
+team_allowlist: []             # Optional manual override (added 2026-06-11, project owner). When non-empty
+                               # (e.g. ["NYM", "ATL", "MIL"]), Phase 1 skips the vegas_game_total
+                               # ranking and uses these teams — in the order listed — as
+                               # candidate_offenses. top_n_offenses is BYPASSED while set.
+                               # The ≥8-confirmed-batters gate still applies: a listed team that
+                               # fails it is dropped with a warning (surfaced in the frame payload
+                               # under `allowlist_dropped`). Empty = auto-rank, byte-identical to
+                               # prior behavior. Concentration/Hare allocation and Phase 3+ run
+                               # unchanged over the pinned pool.
+
+# --- macro shape ---
+# 3.1 — counts must sum to 20 (portfolio size). 0 = disabled; flip a shape on
+# by changing its count to a positive integer (and rebalancing another to keep
+# the sum at 20). Available shapes mirror shape_catalog_mid.json (top 10 by
+# weight cover ~92% of top-1% lineups). Add/remove keys freely as long as each
+# is in the catalog and total is 20.
+# Broadened 2026-05-06: 5 active shapes (instead of 3) so candidate-pool
+# rotation hits more shape × team-pair combinations before pool selection.
+shape_mix:
+  "5-3":           7    # 0.197 — premium 5-stack with secondary
+  "5-2-1":         6    # 0.343 — most common top-1% shape
+  "4-3-1":         3    # 0.075 — 4-stack + secondary + single
+  "5-1-1-1":       2    # 0.128 — lone 5-stack, three singles
+  "4-4":           2    # 0.030 — symmetric double-stack
+  "4-2-1-1":       0    # 0.063 — 4-stack with thin secondary
+  "3-2-1-1-1":     0    # 0.028 — no 4-stack (under-stacked, GPP edge thin)
+  "2-2-1-1-1-1":   0    # 0.024 — sub-4-stack, last-resort
+  "4-1-1-1-1":     0    # 0.019 — 4-stack with all singles
+  "3-2-2-1":       0    # 0.018 — twin secondaries
+secondary_optional_pct: 25     # 3.3 — % of lineups allowed to skip secondary stack
+bring_back_pct: 0              # 3.4 — % of lineups using bring-back
+
+# --- team selection ---
+concentration: 0.0             # 4.1 — 0=flat across top-N, 1=all-on-one (flattened 0.5→0.0 2026-05-06 so no team eats >12% of pool)
+
+# --- stack composition ---
+stack_swap_threshold: 0.50     # 4.2 — calibrated 2026-05-05 on 4-22 real-data: ~25% swap rate (in spec band [5%, 30%])
+iso_multiplier_strength: 0.20  # 4.3 — placeholder, tuned in stack-composition plan
+
+# --- SP selection ---
+sp_exposure_cap: 0.50          # 5.1 — max fraction of lineups on a single SP1
+sp_chalk_leverage_ratio: 0.50  # 5.2 — 0.5 = half chalk, half leverage SPs
+
+# --- exposure ---
+player_exposure_cap: 0.70      # 5.4 — max fraction of lineups on any single hitter
+team_primary_stack_cap: 0.25   # 5.5 — max fraction of lineups whose PRIMARY (largest)
+                               # stack is on a single team. Lifted 0.20→0.25 (2026-05-24, project owner)
+                               # so the 4-distinct-primary setup (top_n_offenses=4) is feasible
+                               # with concentration=0.0 → exact 5/5/5/5 hare allocation across
+                               # the 20-lineup portfolio.
+
+# --- secondary stack ---
+secondary_size: 2              # 6.1 — 2 or 3
+secondary_criterion: "same"    # 6.2 — "same" or "anti-correlation"
+
+# --- pool generation ---
+# Phase 2 multiplies shape_mix counts by this factor; Phase 8 selector
+# narrows back to 20. >=1.0. 2026-05-06: bumped 4.0→10.0 so 200 candidates
+# are generated, giving the selector a much richer pool to pick 20 unique
+# lineups from. Combined with window_diversity_k (below) this targets the
+# duplicate-stack issue we saw at multiplier=4.
+pool_multiplier: 10.0
+
+# --- stack diversity ---
+# 2026-05-06: when >1, Phase 4 rotates among the top-K feasible windows by
+# lineup_idx. Same (primary_team, secondary_team, size) triple no longer
+# locks every iteration into the SAME 5 hitter IDs — the i-th iteration
+# picks the (i mod K)-th highest-ceiling window. K=4 means up to 4 distinct
+# windows per (team, size) pair before the cycle repeats.
+window_diversity_k: 4
+
+# --- within-stack rotation (added 2026-05-25) ---
+# Per-(team, player) appearance-count penalty inside find_top_k_windows
+# scoring. Fires ONLY when team is the lineup's primary stack. When >0,
+# window score becomes sum(ceiling_i - knob * appearance_counts[(team,pid_i)])
+# instead of sum(ceiling_i). Knob value is in BAT-X-ceiling units; 0.15
+# subtracts 0.15 from a player's window contribution per prior primary
+# appearance. Default 0.0 is byte-equivalent to current engine output.
+# Motivation: 2026-05-24-within-stack-forensics found engine repeats the
+# same 5 hitters across primary stacks while winners rotate through slot
+# 6-8 ceiling archetypes (Vargas/Schneemann/Rocchio/Bailey on 5-09/5-15/5-17).
+within_stack_rotation_strength: 0.0
+
+# --- correlation-aware stack-composer joint ranker (added 2026-05-25) ---
+# Blend weight on closed-form covariance-adjusted joint-P90 inside the
+# stack-composer window ranker. When w > 0, find_top_k_windows scores
+# each candidate contiguous batting-order window as
+#   score = (1 - w) * sum(player.ceiling) + w * joint_p90_with_priors
+# where joint_p90 = mu_sum + 1.2816 * sqrt(var_sum + 2 * sum_pairwise_cov)
+# and pair-class correlations come from mlb/src/correlation/priors.py
+# (same-team HH +0.12 base, +0.02 adjacency bonus, vegas-neutral).
+# Default 0.0 SHORT-CIRCUITS to the raw_sum scorer — byte-identical to
+# the prior find_top_k_windows behaviour. 0.25 = mid-weight A/B candidate.
+# Motivation: 2026-05-24-within-stack-forensics showed engine ties on
+# raw_sum with no correlation tiebreaker; winners' top-1% structurally
+# favor top-of-order contiguity (which has higher joint covariance).
+stack_corr_ceiling_weight: 0.0

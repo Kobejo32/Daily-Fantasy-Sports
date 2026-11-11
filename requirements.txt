@@ -1,0 +1,10 @@
+# Validated public demo and offline test environment (Python 3.12).
+# Historical service integrations are reference code, not installed here.
+numpy==2.4.2
+scipy==1.17.1
+pandas==3.0.1
+scikit-learn==1.8.0
+PuLP==3.3.0
+PyYAML==6.0.3
+pytest==9.0.3
+pytest-socket==0.8.1

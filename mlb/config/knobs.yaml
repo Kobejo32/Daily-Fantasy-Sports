@@ -1,0 +1,48 @@
+# C1 — knob registry. Single source of truth for tweakables in the
+# shape-first stack. Engine reads from here; sweep harness rewrites cells.
+
+game_env:
+  # G3-fitted; G3 calibration script overwrites these on each refit.
+  # See config/game_env.yaml for the live values + bootstrap CI.
+  config_path: config/game_env.yaml
+
+shape:
+  # Empirical top-1% catalog by contest field-size bucket.
+  catalogs:
+    small: data/shape_catalogs/shape_catalog_small.json   # <5k entries
+    mid:   data/shape_catalogs/shape_catalog_mid.json     # 5k-50k
+    milly: data/shape_catalogs/shape_catalog_milly.json   # >50k
+  default_bucket: mid
+
+  # S2 propensity function knobs.
+  propensity:
+    implied_baseline: 60.0       # league-median team batter fpts (approx)
+    implied_slope:    0.05       # propensity multiplier per +1 fpts above baseline
+    propensity_floor: 0.30
+    blowout_suppression: 0.5     # 1.0 = full suppression at blowout_p=1.0
+
+generator:
+  n_candidates: 2000             # T-30 budget (premortem-fix O-2)
+  n_candidates_t60_prep: 2000    # idempotent; same number for prep + finalize
+  n_candidates_fallback: 500     # if confirmed-lineup filter cuts pool below 100
+  k_pitcher: 1.5                 # SP penalty per opponent_team_implied fpts
+  seed: 42
+  min_games_covered: 3           # MinGames-style constraint inside the ILP
+  ilp_time_limit_s: 8
+
+portfolio:
+  size: 20
+  ownership_penalty: 0.0          # zero by default — selector handles ownership
+  selector_mode: large            # forwarded to portfolio.selector.select_portfolio
+  selector_max_overlap: 6
+  selector_player_exposure_cap_frac: 0.50
+  selector_stack_exposure_cap_frac: 0.35
+  selector_team_exposure_cap_frac: 0.45
+  selector_min_games_covered: 3
+  # own_sum knob from F1F2 sweep (cap=1.00 sweet spot on n=9):
+  selector_own_sum_upper: 1.00
+
+orchestrator:
+  t60_prep_minutes_before_lock: 60
+  t30_finalize_minutes_before_lock: 30
+  data_freshness_max_age_min: 90    # require pulls within this window at T-60
